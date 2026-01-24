@@ -1,34 +1,40 @@
-#!/bin/bash
+#!/bin/bash -x
 
-
-function list_dbs {
-  dbs=` ls -d */ | sed 's:/$::' `
-
-  for db in $dbs
-  do 
-    echo $db;
-  done
-}
-
-function create_db {
-  echo "Enter Database name";
-  read db_name;
-  mkdir -p "$db_name"
-  echo "Database created successfully";
-  cd "$db_name";
+# ----------- helper functions -----------
+function feedback {
+  if [ $1 -eq 0 ]
+  then
+    zenity --info --text="$2";
+  else
+    zenity --warning --text="$3";
+  fi
 }
 
 function get_dbs_count {
   all_dbs=(*/);
-  dbs_count=${#all_dbs[@]};
 
-  if [ ! $dbs_count ]
+  if [[ $all_dbs == "*/" ]]
   then
-    echo "No databases found";
+    zenity --info --text="No databases founded"
     exit 1;
   fi
 
+  dbs_count=${#all_dbs[@]};
   return $dbs_count;
+}
+
+# ----------- Features Functions -----------
+
+function list_dbs {
+  dbs=` ls -d */ | sed 's:/$::' `
+  zenity --list --title="Your Databases" --column="Databases" $dbs
+}
+
+function create_db {
+  db_name=${USER_INPUT=$(zenity --entry --title="Input required" --text="Enter DataBase Name:")};
+  mkdir "$db_name";
+
+  feedback $? "Database created successfully" "Failed to create database";
 }
 
 function connect_db {
@@ -36,64 +42,46 @@ function connect_db {
   dbs_count=$?;
 
   dbs=` ls -d */ | sed 's:/$::' `
-  select db in $dbs
-  do
-    if [ $REPLY -gt $dbs_count ]
-    then
-      echo "Invalid option";
-    else
-      . ./db "$db";
-      break;
-    fi
-  done
-}
+  target_db=` zenity --list --title="Please select an option to start" --column="Databases" $dbs `;
 
+  . ./db "$target_db";
+}
 
 function drop_db {
   get_dbs_count;
   dbs_count=$?;
 
   dbs=` ls -d */ | sed 's:/$::' `
-  select db in $dbs
-  do
-  if [ $REPLY -gt $dbs_count ]
-  then
-    echo "Invalid option";
-  else
-    rm -rf $db;
-    break;
-  fi
+  target_db=` zenity --list --title="Please select an option to start" --column="Databases" $dbs `;
 
-  done
+  rm -rf $target_db;
+  feedback $? "Database dropped successfully" "Failed to drop database";
 }
 
-# -----------------------------------
-# Start Of App
-echo "Welcome to DBMS App";
-# main menu
-select opt in "Create Database" "List Databases" "Connect to Database" "Drop Database" "Exit"
-do
-  case $REPLY in
-  1) 
-    create_db;
-    ;;
-  2) 
-    list_dbs;
-    ;;
-  3) 
-    connect_db;
-    ;;
-  4) 
-    drop_db;
-    ;;
-  5) 
-    exit 0;
-    ;;
-  *) 
-    echo "Invalid option";
-    break;
-    ;;
+# ----------- Entry Point Function -----------
+function main {
+  option=` zenity --list --title="Welcome to DBMS App, Please select an option to start" --column="Options" "Create Database" "List Databases" "Connect to Database" "Drop Database" "Exit" `;
+
+  case $option in
+    "Create Database")
+      create_db;
+      ;;
+    "List Databases")
+      list_dbs;
+      ;;
+    "Connect to Database")
+      connect_db;
+      ;;
+    "Drop Database")
+      drop_db;
+      ;;
+    "Exit")
+      exit 0;
+      ;;
+    *) 
+      echo "Invalid option";
+      break;
+      ;;
   esac
-done
-
-
+}
+main;

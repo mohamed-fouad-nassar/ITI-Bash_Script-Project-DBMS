@@ -129,5 +129,18 @@ fi
     break
   done
 }
+function listTables {
+  # عرض الملفات بدون امتداد .metadata
+  tables=$(ls "$DB_PATH" | grep -v "\.metadata$")
+
+  if [[ -z "$tables" ]]; then
+    zenity --info --text="No tables found in this database"
+  else
+    zenity --list --title="Tables in $DB_NAME" --column="Table Name" $tables
+  fi
+}
+
+ 
+
 
 Menu;

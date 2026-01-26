@@ -64,7 +64,7 @@ function Menu {
 function createTable {
 
   while true; do
-    table_name=$(zenity --entry --title="Create Table" --text="Enter Table Name (First letter Capital):")
+    table_name=$(zenity --entry --title="Create Table" --text="Enter Table Name ")
     
 # Check if table name is empty
 if [[ -z "$table_name" ]]; then
@@ -72,25 +72,19 @@ if [[ -z "$table_name" ]]; then
     continue
 fi
 
-# Check if first letter is Capital
-if [[ ! "$table_name" =~ ^[A-Z] ]]; then
-    zenity --warning --text="Table name must start with a Capital letter"
-    continue
-fi
-
+ 
 #  Check if rest are valid characters
-if [[ ! "$table_name" =~ ^[A-Z][a-zA-Z0-9]*$ ]]; then
+if [[ ! "$table_name" =~ ^[A-Za-z][a-zA-Z0-9]*$ ]]; then
     zenity --warning --text="Table name can contain only letters and numbers"
     continue
 fi
 
     # check if table exists
-    existing=$(ls "$DB_PATH" | grep -i "^$table_name$")
-    if [[ ! -z "$existing" ]]; then
-      zenity --warning --text="Table '$table_name' already exists"
-      continue
-    fi
-
+existing=$(ls "$DB_PATH" | grep -i "^$table_name$")
+if [[ -n "$existing" ]]; then
+    zenity --warning --text="Table '$table_name' already exists"
+    continue
+fi
     # Create table files
     touch "$DB_PATH/$table_name"
     touch "$DB_PATH/$table_name.metadata"
@@ -129,20 +123,30 @@ fi
     break
   done
 }
+
+
 function listTables {
-  # عرض الملفات بدون امتداد .metadata
-  tables=$(ls "$DB_PATH" | grep -v "\.metadata$")
+  # جلب أسماء الجداول فقط (بدون .metadata و .data)
+  tables=$(ls "$DB_PATH" \
+    | grep -v "\.metadata$" \
+    | grep -v "\.data$")
 
   if [[ -z "$tables" ]]; then
     zenity --info --text="No tables found in this database"
   else
-    zenity --list --title="Tables in $DB_NAME" --column="Table Name" $tables
+    zenity --list \
+      --title="Tables in $DB_NAME" \
+      --column="Table Name" \
+      $tables
   fi
 }
 
 function dropTable {
   # عرض أسماء الجداول فقط
-  tables=$(ls "$DB_PATH" | grep -v "\.metadata$")
+  tables=$(ls "$DB_PATH" \
+    | grep -v "\.metadata$" \
+    | grep -v "\.data$")
+
   if [[ -z "$tables" ]]; then
     zenity --info --text="No tables to drop"
     return
@@ -156,7 +160,81 @@ function dropTable {
 
   # حذف الجدول وملف الميتاداتا المرتبط به
   rm -f "$DB_PATH/$table" "$DB_PATH/$table.metadata"
+    rm -f "$DB_PATH/$table" "$DB_PATH/$table.data"
+
   zenity --info --text="Table '$table' dropped successfully"
+}
+
+
+function insertTable {
+
+  # ===== List Tables (without .metadata & .data) =====
+  tables=$(ls "$DB_PATH" | grep -vE "\.(metadata|data)$")
+  if [[ -z "$tables" ]]; then
+    zenity --info --text="No tables found"
+    return
+  fi
+
+  table_input=$(zenity --list --title="Insert Into Table" --column="Tables" $tables)
+  if [[ -z "$table_input" ]]; then
+    zenity --warning --text="No table selected"
+    return
+  fi
+
+  # ===== Case-insensitive exact match =====
+  table=$(ls "$DB_PATH" | awk -v t="$table_input" 'tolower($0)==tolower(t)')
+  meta_file="$DB_PATH/$table.metadata"
+  data_file="$DB_PATH/$table.data"
+
+  # ===== Auto Increment ID =====
+  if [[ ! -s "$data_file" ]]; then
+    new_id=1
+  else
+    last_id=$(tail -n 1 "$data_file" | cut -d':' -f1)
+    new_id=$((last_id + 1))
+  fi
+
+  record="$new_id"
+
+  # ===== Read Metadata =====
+  while IFS=: read -r col_name col_type col_key; do
+
+    # Skip ID (auto-generated)
+    [[ "$col_name" == "id" ]] && continue
+
+    while true; do
+      value=$(zenity --entry \
+        --title="Insert Value" \
+        --text="Enter value for $col_name")
+
+      [[ -z "$value" ]] && {
+        zenity --warning --text="Value cannot be empty"
+        continue
+      }
+
+      # ===== Integer Validation =====
+      if [[ "$col_type" == "int" && ! "$value" =~ ^[0-9]+$ ]]; then
+        zenity --warning --text="$col_name must be a number"
+        continue
+      fi
+
+      # ===== String Validation =====
+      if [[ "$col_type" == "string" ]]; then
+        if [[ "$value" == *":"* ]]; then
+          zenity --warning --text="':' character is not allowed"
+          continue
+        fi
+      fi
+
+      record="$record:$value"
+      break
+    done
+
+  done < "$meta_file"
+
+  # ===== Insert Record =====
+  echo "$record" >> "$data_file"
+  zenity --info --text="Record inserted successfully into table '$table'"
 }
 
 

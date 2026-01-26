@@ -64,7 +64,7 @@ function Menu {
 function createTable {
 
   while true; do
-    table_name=$(zenity --entry --title="Create Table" --text="Enter Table Name (First letter Capital):")
+    table_name=$(zenity --entry --title="Create Table" --text="Enter Table Name ")
     
 # Check if table name is empty
 if [[ -z "$table_name" ]]; then
@@ -205,7 +205,7 @@ function insertTable {
     while true; do
       value=$(zenity --entry \
         --title="Insert Value" \
-        --text="Enter value for $col_name ($col_type)")
+        --text="Enter value for $col_name")
 
       [[ -z "$value" ]] && {
         zenity --warning --text="Value cannot be empty"

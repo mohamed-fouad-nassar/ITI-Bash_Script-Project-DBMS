@@ -125,5 +125,23 @@ fi
 }
 
 
+function listTables {
+  # جلب أسماء الجداول فقط (بدون .metadata و .data)
+  tables=$(ls "$DB_PATH" \
+    | grep -v "\.metadata$" \
+    | grep -v "\.data$")
+
+  if [[ -z "$tables" ]]; then
+    zenity --info --text="No tables found in this database"
+  else
+    zenity --list \
+      --title="Tables in $DB_NAME" \
+      --column="Table Name" \
+      $tables
+  fi
+}
+
+
+
 
 Menu;

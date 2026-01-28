@@ -1,90 +1,167 @@
-#!/bin/bash
+cd $1;
+cur_db_name=$1;
+DB_NAME="$1";
+DB_PATH="./$DB_NAME";
 
-DB_NAME="$1"
-DB_PATH="./$DB_NAME"
+# ----------- helper functions -----------
 
-# ===== Table Menu =====
-function Menu {
+function get_tables_count {
+  all_tables=(*.txt);
 
-  while true; do
-    option=$(zenity --list \
-      --title="Connected to Database: $DB_NAME" \
-      --column="Options" \
-      "Create Table" \
-      "List Tables" \
-      "Drop Table" \
-      "Insert Into Table" \
-      "Select From Table" \
-      "Delete From Table" \
-      "Update Table" \
-      "Back to Main Menu")
+  if [[ $all_tables == "*.txt" ]]
+  then
+    zenity --info --text="No tables founded"
+    exit 1;
+  fi
 
-    case $option in
+  tables_count=${#all_tables[@]};
+  return $tables_count;
+}
 
-      "Create Table")
-        createTable
-        ;;
+# ----------- Features Functions -----------
 
-      "List Tables")
-        listTables
-        ;;
+# Select from table
+function select_from_table {
+  get_tables_count;
 
-      "Drop Table")
-        dropTable
-        ;;
+  tables=` ls *.txt | sed 's/\.txt$//' `
+  table_name=` zenity --list --title="Please select an option to start" --column="Tables" $tables `;
 
-      "Insert Into Table")
-        insertTable
-        ;;
+  if [ ! -f "$table_name.txt" ]
+  then
+    echo "Table not found";
+    exit 1;
+  fi
 
-      "Select From Table")
-        selectTable
-        ;;
+    option=`  zenity --list --title="Please select an option to start" --column="option" "Select All" "Select using Where" "Back" `;
 
-      "Delete From Table")
-        deleteTable
-        ;;
+  case $option in
+    "Select All")
+      select_all "$table_name.txt"
+      ;;
+    "Select using Where")
+      select_where "$table_name.txt"
+      ;;
+    "Back")
+      break
+      ;;
+    *) 
+      echo "Invalid option"
+      ;;
+  esac
+}
 
-      "Update Table")
-        updateTable
-        ;;
+function select_all {
+  table="$1";
+  column -t -s '|' "$table";
+}
 
-      "Back to Main Menu")
-        break
-        ;;
+function select_where {
+  table="$1";
+  columns=$(head -n 1 "$table");
+  IFS='|' read -ra cols <<< "$columns";
 
-      *)
-        zenity --warning --text="Invalid option, please select again"
-        ;;
-    esac
+  attr=`  zenity --list --title="Please select an column to start" --column="Attributes" ${cols[@]} `;
+  value=`  zenity --entry --title="Input required" --text="Enter value:" `;
+
+  col_index=0;
+  for i in "${!cols[@]}"
+  do
+    if [ "${cols[$i]}" = "$attr" ];
+    then
+      col_index=$((i + 1));
+      break;
+    fi
   done
+
+  result=` awk -F '|' -v col="$col_index" -v val="$value" '{ if (NR > 1 && $col == val) print $0; }' "$table" `;
+
+  if [ -z "$result" ];
+  then
+    zenity --info --text="No matching records found";
+    exit 1;
+  fi
+
+  column -t -s '|' <<< "$result";
+}
+
+# Delete from table
+function delete_from_table {
+  get_tables_count;
+
+  tables=` ls *.txt | sed 's/\.txt$//' `
+  table_name=` zenity --list --title="Please select an option to start" --column="Tables" $tables `;
+
+  if [ ! -f "$table_name.txt" ]
+  then
+    echo "Table not found";
+    exit 1;
+  fi
+
+  columns=$(head -n 1 "$table_name.txt");
+  IFS='|' read -ra cols <<< "$columns";
+
+  attr=`  zenity --list --title="Please select an column to start" --column="Attributes" ${cols[@]} `;
+  value=`  zenity --entry --title="Input required" --text="Enter value to delete:" `;
+
+  col_index=0;
+  for i in "${!cols[@]}"
+  do
+    if [ "${cols[$i]}" = "$attr" ];
+    then
+      col_index=$((i + 1));
+      break;
+    fi
+  done
+
+  match=` awk -F '|' -v col="$col_index" -v val="$value" '{ if (NR > 1 && $col == val) print $0; }' "$table_name.txt" `;
+
+  if [ -z "$match" ];
+  then
+    zenity --info --text="No matching records found";
+    exit 1;
+  fi
+
+  zenity --question --text="Are you sure you want to delete these records?";
+  if [ $? -ne 0 ]
+  then
+    exit 0;
+  fi
+
+  awk -F '|' -v col="$col_index" -v val="$value" '
+    NR==1 {print; next}
+    $col != val {print}
+  ' "$table_name.txt" > temp.txt
+
+  mv temp.txt "$table_name.txt"
+
+  zenity --info --text="Record(s) deleted successfully!"
 }
 
 # ===== Create Table =====
 function createTable {
-
   while true; do
     table_name=$(zenity --entry --title="Create Table" --text="Enter Table Name ")
     
-# Check if table name is empty
-if [[ -z "$table_name" ]]; then
-    zenity --warning --text="Table name cannot be empty"
-    continue
-fi
+    # Check if table name is empty
+    if [[ -z "$table_name" ]]; then
+        zenity --warning --text="Table name cannot be empty"
+        continue
+    fi
 
- 
-#  Check if rest are valid characters
-if [[ ! "$table_name" =~ ^[A-Za-z][a-zA-Z0-9]*$ ]]; then
-    zenity --warning --text="Table name can contain only letters and numbers"
-    continue
-fi
 
-    # check if table exists
-existing=$(ls "$DB_PATH" | grep -i "^$table_name$")
-if [[ -n "$existing" ]]; then
-    zenity --warning --text="Table '$table_name' already exists"
-    continue
-fi
+    #  Check if rest are valid characters
+    if [[ ! "$table_name" =~ ^[A-Za-z][a-zA-Z0-9]*$ ]]; then
+        zenity --warning --text="Table name can contain only letters and numbers"
+        continue
+    fi
+
+        # check if table exists
+    existing=$(ls "$DB_PATH" | grep -i "^$table_name$")
+    if [[ -n "$existing" ]]; then
+        zenity --warning --text="Table '$table_name' already exists"
+        continue
+    fi
     # Create table files
     touch "$DB_PATH/$table_name"
     touch "$DB_PATH/$table_name.metadata"
@@ -309,5 +386,96 @@ function updateTable {
   zenity --info --text="Record with ID $record_id updated successfully"
 }
 
+# ----------- Main DB Menu -----------
+function dbMenu {
+  option=` zenity --list --title="Welcome to $cur_db_name DB, Please select an option to start" --column="Options" "Create Table" "List Tables" "Drop Table" "Insert in Table" "Select from Table" "Delete from Table" "Update Table" "Exit" `;
 
-Menu;
+  case $option in
+    "Create Table")
+      createTable;
+      ;;
+    "List Tables")
+      listTables;
+      ;;
+    "Drop Table")
+      dropTable;
+      ;;
+    "Insert in Table")
+      insertTable;
+      ;;
+    "Select from Table")
+      select_from_table;
+      ;;
+    "Delete from Table")
+      delete_from_table;
+      ;;
+    "Update Table")
+      exit 0;
+      ;;
+    "Exit")
+      exit 0;
+      ;;
+    *) 
+      echo "Invalid option";
+      ;;
+  esac
+}
+dbMenu;
+
+# ===== Table Menu =====
+# function Menu {
+
+#   while true; do
+#     option=$(zenity --list \
+#       --title="Connected to Database: $DB_NAME" \
+#       --column="Options" \
+#       "Create Table" \
+#       "List Tables" \
+#       "Drop Table" \
+#       "Insert Into Table" \
+#       "Select From Table" \
+#       "Delete From Table" \
+#       "Update Table" \
+#       "Back to Main Menu")
+
+#     case $option in
+
+#       "Create Table")
+#         createTable
+#         ;;
+
+#       "List Tables")
+#         listTables
+#         ;;
+
+#       "Drop Table")
+#         dropTable
+#         ;;
+
+#       "Insert Into Table")
+#         insertTable
+#         ;;
+
+#       "Select From Table")
+#         selectTable
+#         ;;
+
+#       "Delete From Table")
+#         deleteTable
+#         ;;
+
+#       "Update Table")
+#         updateTable
+#         ;;
+
+#       "Back to Main Menu")
+#         break
+#         ;;
+
+#       *)
+#         zenity --warning --text="Invalid option, please select again"
+#         ;;
+#     esac
+#   done
+# }
+# Menu;

@@ -1,9 +1,90 @@
-#!/bin/bash
-
 cd $1;
 cur_db_name=$1;
 
-# Main DB Menu
+# ----------- helper functions -----------
+
+function get_tables_count {
+  all_tables=(*.txt);
+
+  if [[ $all_tables == "*.txt" ]]
+  then
+    zenity --info --text="No tables founded"
+    exit 1;
+  fi
+
+  tables_count=${#all_tables[@]};
+  return $tables_count;
+}
+
+# ----------- Features Functions -----------
+
+# Select from table
+function select_from_table {
+  get_tables_count;
+
+  tables=` ls *.txt | sed 's/\.txt$//' `
+  table_name=` zenity --list --title="Please select an option to start" --column="Tables" $tables `;
+
+  if [ ! -f "$table_name.txt" ]
+  then
+    echo "Table not found";
+    exit 1;
+  fi
+
+    option=`  zenity --list --title="Please select an option to start" --column="option" "Select All" "Select using Where" "Back" `;
+
+  case $option in
+    "Select All")
+      select_all "$table_name.txt"
+      ;;
+    "Select using Where")
+      select_where "$table_name.txt"
+      ;;
+    "Back")
+      break
+      ;;
+    *) 
+      echo "Invalid option"
+      ;;
+  esac
+}
+
+function select_all {
+  table="$1";
+  column -t -s '|' "$table";
+}
+
+function select_where {
+  table="$1";
+  columns=$(head -n 1 "$table");
+  IFS='|' read -ra cols <<< "$columns";
+
+  attr=`  zenity --list --title="Please select an column to start" --column="Attributes" ${cols[@]} `;
+  value=`  zenity --entry --title="Input required" --text="Enter value:" `;
+
+  col_index=0;
+  for i in "${!cols[@]}"
+  do
+    if [ "${cols[$i]}" = "$attr" ];
+    then
+      col_index=$((i + 1));
+      break;
+    fi
+  done
+
+  result=` awk -F '|' -v col="$col_index" -v val="$value" '{ if (NR > 1 && $col == val) print $0; }' "$table" `;
+
+  if [ -z "$result" ];
+  then
+    zenity --info --text="No matching records found";
+    exit 1;
+  fi
+
+  column -t -s '|' <<< "$result";
+}
+
+
+# ----------- Main DB Menu -----------
 function dbMenu {
   option=` zenity --list --title="Welcome to $cur_db_name DB, Please select an option to start" --column="Options" "Create Table" "List Tables" "Drop Table" "Insert in Table" "Select from Table" "Delete from Table" "Update Table" "Exit" `;
 
@@ -21,7 +102,7 @@ function dbMenu {
       exit 0;
       ;;
     "Select from Table")
-      exit 0;
+      select_from_table;
       ;;
     "Delete from Table")
       exit 0;

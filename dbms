@@ -61,27 +61,37 @@ function drop_db {
 
 # ----------- Entry Point Function -----------
 function main {
-  option=` zenity --list --title="Welcome to DBMS App, Please select an option to start" --column="Options" "Create Database" "List Databases" "Connect to Database" "Drop Database" "Exit" `;
+  while true; do
+    option=$(zenity --list \
+      --title="Welcome to DBMS App, Please select an option to start" \
+      --column="Options" \
+      "Create Database" \
+      "List Databases" \
+      "Connect to Database" \
+      "Drop Database" \
+      "Exit")
 
-  case $option in
-    "Create Database")
-      create_db;
-      ;;
-    "List Databases")
-      list_dbs;
-      ;;
-    "Connect to Database")
-      connect_db;
-      ;;
-    "Drop Database")
-      drop_db;
-      ;;
-    "Exit")
-      exit 0;
-      ;;
-    *) 
-      echo "Invalid option";
-      ;;
-  esac
+    case $option in
+      "Create Database")
+        create_db
+        ;;
+      "List Databases")
+        list_dbs
+        ;;
+      "Connect to Database")
+        connect_db
+        ;;
+      "Drop Database")
+        drop_db
+        ;;
+      "Exit")
+        exit 0
+        ;;
+      *)
+        zenity --warning --text="Invalid choice, please select again"
+        ;;
+    esac
+  done
 }
-main;
+
+main

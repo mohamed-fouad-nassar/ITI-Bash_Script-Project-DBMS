@@ -63,7 +63,8 @@ function createTable {
     [[ -n "$existing" ]] && { zenity --warning --text="Table '$table_name' already exists"; continue; }
 
     # Create table files
-    touch "$table_name.metadata" "$table_name.data"
+    touch "$table_name.metadata"
+    
 
     # Add automatic id column
     echo "id:int:PK" >> "$table_name.metadata"
@@ -208,68 +209,92 @@ function updateTable {
 
 # ===== Select from Table =====
 function select_from_table {
-  get_tables_count;
+  while true
+  do
+    tables=$(printf "%s\n" *.data 2>/dev/null | sed 's/\.data$//')
 
-  tables=` ls *.data | sed 's/\.data$//' `
-  table_name=` zenity --list --title="Please select an option to start" --column="Tables" $tables `;
+    if [ -z "$tables" ]; then
+      zenity --info --text="No tables found"
+      return
+    fi
 
-  if [ ! -f "$table_name.data" ]
-  then
-    echo "Table not found";
-    exit 1;
-  fi
+    table_name=$(echo "$tables" | zenity --list \
+      --title="Select Table" \
+      --column="Tables")
 
-    option=`  zenity --list --title="Please select an option to start" --column="option" "Select All" "Select using Where" "Back" `;
+    [ -z "$table_name" ] && return
 
-  case $option in
-    "Select All")
-      select_all "$table_name.data"
-      ;;
-    "Select using Where")
-      select_where "$table_name.data"
-      ;;
-    "Back")
-      break
-      ;;
-    *) 
-      echo "Invalid option"
-      ;;
-  esac
+    option=$(zenity --list \
+      --title="Select Option" \
+      --column="Option" \
+      "Select All" "Select using Where" "Back")
+
+    case "$option" in
+      "Select All")
+        select_all "$table_name.data"
+        ;;
+      "Select using Where")
+        select_where "$table_name.data"
+        ;;
+      "Back"|"")
+        return
+        ;;
+    esac
+  done
 }
 
+
 function select_all {
-  table="$1";
-  column -t -s ':' "$table";
+  table="$1"
+
+  if [ ! -s "$table" ]; then
+    zenity --info --text="Table is empty"
+    return
+  fi
+
+  column -t -s ':' "$table" | zenity --text-info \
+    --title="Table Data" \
+    --width=700 \
+    --height=400 \
+    --font="monospace"
 }
 
 function select_where {
-  table="$1";
-  columns=$(head -n 1 "$table");
-  IFS=':' read -ra cols <<< "$columns";
+  table="$1"
 
-  attr=`  zenity --list --title="Please select an column to start" --column="Attributes" ${cols[@]} `;
-  value=`  zenity --entry --title="Input required" --text="Enter value:" `;
-
-  col_index=0;
-  for i in "${!cols[@]}"
+  while true
   do
-    if [ "${cols[$i]}" = "$attr" ];
-    then
-      col_index=$((i + 1));
-      break;
-    fi
+    columns=$(head -n 1 "$table")
+    IFS=':' read -ra cols <<< "$columns"
+
+    attr=$(zenity --list --title="Select Column" --column="Attributes" "${cols[@]}")
+    [ -z "$attr" ] && return
+
+    value=$(zenity --entry --title="Input required" --text="Enter value:")
+    [ -z "$value" ] && continue
+
+    col_index=0
+    for i in "${!cols[@]}"; do
+      if [ "${cols[$i]}" = "$attr" ]; then
+        col_index=$((i + 1))
+        break
+      fi
+    done
+
+    awk -F ':' -v col="$col_index" -v val="$value" '
+      NR > 1 && $col == val {print}
+    ' "$table" |
+    column -t -s ':' |
+    zenity --text-info \
+      --title="Query Result" \
+      --width=700 \
+      --height=400 \
+      --font="monospace"
+
+    return
   done
-
-  result=` awk -F ':' -v col="$col_index" -v val="$value" '{ if (NR > 1 && $col == val) print $0; }' "$table" `;
-
-  if [ -z "$result" ];
-  then
-    zenity --info --text="No matching records found";
-    exit 1;
-  fi
-
-  column -t -s ':' <<< "$result";
 }
+
 
 # ===== Delete from Table =====
 function delete_from_table {

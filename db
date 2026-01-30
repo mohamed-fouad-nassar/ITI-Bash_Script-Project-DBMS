@@ -2,19 +2,6 @@
 
 DB_NAME="$1";
 
-function get_tables_count {
-  all_tables=(*.data);
-
-  if [[ $all_tables == "*.data" ]]
-  then
-    zenity --info --text="No tables founded"
-    exit 1;
-  fi
-
-  tables_count=${#all_tables[@]};
-  return $tables_count;
-}
-
 # ===== Table Menu =====
 function Menu {
   while true; do
@@ -28,7 +15,8 @@ function Menu {
       "Select From Table" \
       "Delete From Table" \
       "Update Table" \
-      "Back to Main Menu")
+      "Back to Main Menu"\
+      "Exit")
 
     case $option in
       "Create Table") createTable ;;
@@ -38,13 +26,15 @@ function Menu {
       "Select From Table") select_from_table ;;
       "Delete From Table") delete_from_table ;;
       "Update Table") updateTable ;;
-      "Back to Main Menu") break ;;
-      *) 
+      "Back to Main Menu") return ;;
+      "Exit")
+        exit 0
+        ;;
+      *)
         if [ $? -eq 1 ]
         then
-          exit 1;
+          zenity --warning --text="Invalid choice, please select again";
         fi
-        zenity --warning --text="Invalid choice, please select again";
         ;;
     esac
   done
@@ -94,23 +84,46 @@ function createTable {
 
 # ===== List Tables =====
 function listTables {
-  tables=$(ls *.metadata 2>/dev/null | sed 's/\.metadata$//')
-  [[ -z "$tables" ]] && { zenity --info --text="No tables found"; return; }
+mapfile -t tables < <(ls *.metadata 2>/dev/null | sed 's/\.metadata$//')
 
-  zenity --list --title="Tables in $DB_NAME" --column="Table Name" $tables
+[[ ${#tables[@]} -eq 0 ]] && { zenity --info --text="No tables found"; return; }
+
+zenity --list --title="Tables in $DB_NAME" --column="Table Name" "${tables[@]}"
+
 }
 
 # ===== Drop Table =====
 function dropTable {
-  tables=$(ls *.metadata 2>/dev/null | sed 's/\.metadata$//')
-  [[ -z "$tables" ]] && { zenity --info --text="No tables to drop"; return; }
 
-  table=$(zenity --list --title="Drop Table" --column="Tables" $tables)
-  [[ -z "$table" ]] && { zenity --warning --text="No table selected"; return; }
+  # جلب أسماء الجداول (من ملفات metadata)
+  mapfile -t tables < <(ls *.metadata 2>/dev/null | sed 's/\.metadata$//')
 
+  # لو مفيش جداول
+  if [[ ${#tables[@]} -eq 0 ]]; then
+    zenity --info --text="No tables to drop"
+    return
+  fi
+
+  # عرض الجداول في zenity
+  table=$(zenity --list \
+    --title="Drop Table" \
+    --column="Tables" \
+    "${tables[@]}")
+
+  # لو المستخدم ضغط Cancel
+  [[ -z "$table" ]] && return
+
+  # تأكيد الحذف
+  zenity --question --text="Are you sure you want to drop table '$table'?"
+  [[ $? -ne 0 ]] && return
+
+  # حذف ملفات الجدول
   rm -f "$table.metadata" "$table.data"
-  zenity --info --text="Table '$table' dropped successfully"
+
+  # feedback حسب نتيجة الحذف
+  feedback $? "Table '$table' dropped successfully" "Failed to drop table '$table'"
 }
+
 
 # ===== Insert Into Table =====
 function insertTable {
@@ -163,23 +176,27 @@ function insertTable {
 }
 
 # ===== Update Table =====
+# ===== Update Table =====
 function updateTable {
+
   tables=$(ls *.metadata 2>/dev/null | sed 's/\.metadata$//')
   [[ -z "$tables" ]] && { zenity --info --text="No tables found"; return; }
 
   table_input=$(zenity --list --title="Update Table" --column="Tables" $tables)
   [[ -z "$table_input" ]] && return
 
-  table=$(ls *.metadata | awk -v t="$table_input" 'tolower($0)==tolower(t".metadata")' | sed 's/\.metadata$//')
+  table="$table_input"
   meta_file="$table.metadata"
   data_file="$table.data"
 
   [[ ! -s "$data_file" ]] && { zenity --info --text="Table '$table' has no data"; return; }
 
-  ids=$(cut -d':' -f1 "$data_file")
+  # Only numeric IDs (skip header)
+  ids=$(tail -n +2 "$data_file" | cut -d':' -f1)
   record_id=$(zenity --list --title="Select Record ID" --column="ID" $ids)
   [[ -z "$record_id" ]] && return
 
+  # Build list of columns
   cols=()
   while IFS=: read -r name type key; do [[ "$name" != "id" ]] && cols+=("$name"); done < "$meta_file"
   col_name=$(zenity --list --title="Select Column to Update" --column="Columns" "${cols[@]}")
@@ -188,6 +205,7 @@ function updateTable {
   col_type=$(awk -F: -v c="$col_name" '$1==c {print $2}' "$meta_file")
   col_index=$(awk -F: -v c="$col_name" 'BEGIN{idx=0}{idx++} $1==c{print idx}' "$meta_file")
 
+  # Input new value
   while true; do
     new_value=$(zenity --entry --title="Update Value" --text="Enter new value for $col_name ($col_type)")
     [[ -z "$new_value" ]] && { zenity --warning --text="Value cannot be empty"; continue; }
@@ -200,6 +218,7 @@ function updateTable {
     break
   done
 
+  # Update the record
   awk -F: -v OFS=: -v id="$record_id" -v idx="$col_index" -v val="$new_value" '
     $1==id {$idx=val} {print}
   ' "$data_file" > "$data_file.tmp" && mv "$data_file.tmp" "$data_file"
@@ -207,20 +226,30 @@ function updateTable {
   zenity --info --text="Record with ID $record_id updated successfully"
 }
 
+
+# ===== Select from Table =====
 # ===== Select from Table =====
 function select_from_table {
-  while true
-  do
-    tables=$(printf "%s\n" *.data 2>/dev/null | sed 's/\.data$//')
+  while true; do
+    # Only get .data files if they exist
+    shopt -s nullglob
+    data_files=( *.data )
+    shopt -u nullglob
 
-    if [ -z "$tables" ]; then
+    # Strip .data extension
+    tables=()
+    for f in "${data_files[@]}"; do
+      tables+=( "$(basename "$f" .data)" )
+    done
+
+    if [ ${#tables[@]} -eq 0 ]; then
       zenity --info --text="No tables found"
       return
     fi
 
-    table_name=$(echo "$tables" | zenity --list \
+    table_name=$(zenity --list \
       --title="Select Table" \
-      --column="Tables")
+      --column="Tables" "${tables[@]}")
 
     [ -z "$table_name" ] && return
 
@@ -230,15 +259,9 @@ function select_from_table {
       "Select All" "Select using Where" "Back")
 
     case "$option" in
-      "Select All")
-        select_all "$table_name.data"
-        ;;
-      "Select using Where")
-        select_where "$table_name.data"
-        ;;
-      "Back"|"")
-        return
-        ;;
+      "Select All") select_all "$table_name.data" ;;
+      "Select using Where") select_where "$table_name.data" ;;
+      "Back"|"") return ;;
     esac
   done
 }
@@ -298,7 +321,14 @@ function select_where {
 
 # ===== Delete from Table =====
 function delete_from_table {
-  get_tables_count;
+
+    mapfile -t tables < <(ls *.metadata 2>/dev/null | sed 's/\.metadata$//')
+
+  # لو مفيش جداول
+  if [[ ${#tables[@]} -eq 0 ]]; then
+    zenity --info --text="No tables to delete"
+    return
+  fi
 
   tables=` ls *.data | sed 's/\.data$//' `
   table_name=` zenity --list --title="Please select an option to start" --column="Tables" $tables `;
@@ -306,7 +336,7 @@ function delete_from_table {
   if [ ! -f "$table_name.data" ]
   then
     echo "Table not found";
-    exit 1;
+    return ;
   fi
 
   columns=$(head -n 1 "$table_name.data");
@@ -330,7 +360,7 @@ function delete_from_table {
   if [ -z "$match" ];
   then
     zenity --info --text="No matching records found";
-    exit 1;
+    return;
   fi
 
   zenity --question --text="Are you sure you want to delete these records?";
@@ -349,9 +379,11 @@ function delete_from_table {
   zenity --info --text="Record(s) deleted successfully!"
 }
 
-# ===== Connect to DB =====
+
 function choose_db {
-  DB_NAME=$(zenity --entry --title="Enter to Database Folder" --text="Enter database name")
+  local BASE_DIR=$(pwd)   
+
+  DB_NAME=$(zenity --entry --title="Enter Database Folder" --text="Enter database name")
   [[ -z "$DB_NAME" ]] && return
 
   if [[ ! -d "$DB_NAME" ]]; then
@@ -361,6 +393,7 @@ function choose_db {
 
   cd "$DB_NAME" || { zenity --error --text="Failed to enter database directory"; return; }
   Menu
+  cd "$BASE_DIR"   
 }
-# ===== Entry Point =====
+
 choose_db

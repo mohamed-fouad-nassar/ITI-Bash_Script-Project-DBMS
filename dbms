@@ -119,9 +119,8 @@ function main {
       *)
         if [ $? -eq 1 ]
         then
-          exit 1;
+         zenity --warning --text="Invalid choice, please select again";
         fi
-        zenity --warning --text="Invalid choice, please select again";
         ;;
     esac
   done

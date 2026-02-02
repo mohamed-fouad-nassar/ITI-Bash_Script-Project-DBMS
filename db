@@ -84,17 +84,13 @@ function createTable {
 
 # ===== List Tables =====
 function listTables {
-mapfile -t tables < <(ls *.metadata 2>/dev/null | sed 's/\.metadata$//')
-
-[[ ${#tables[@]} -eq 0 ]] && { zenity --info --text="No tables found"; return; }
-
-zenity --list --title="Tables in $DB_NAME" --column="Table Name" "${tables[@]}"
-
+  mapfile -t tables < <(ls *.metadata 2>/dev/null | sed 's/\.metadata$//')
+  [[ ${#tables[@]} -eq 0 ]] && { zenity --info --text="No tables found"; return; }
+  zenity --list --title="Tables in $DB_NAME" --column="Table Name" "${tables[@]}"
 }
 
 # ===== Drop Table =====
 function dropTable {
-
   # جلب أسماء الجداول (من ملفات metadata)
   mapfile -t tables < <(ls *.metadata 2>/dev/null | sed 's/\.metadata$//')
 
@@ -176,9 +172,7 @@ function insertTable {
 }
 
 # ===== Update Table =====
-# ===== Update Table =====
 function updateTable {
-
   tables=$(ls *.metadata 2>/dev/null | sed 's/\.metadata$//')
   [[ -z "$tables" ]] && { zenity --info --text="No tables found"; return; }
 
@@ -226,8 +220,6 @@ function updateTable {
   zenity --info --text="Record with ID $record_id updated successfully"
 }
 
-
-# ===== Select from Table =====
 # ===== Select from Table =====
 function select_from_table {
   while true; do
@@ -265,7 +257,6 @@ function select_from_table {
     esac
   done
 }
-
 
 function select_all {
   table="$1"
@@ -318,10 +309,8 @@ function select_where {
   done
 }
 
-
 # ===== Delete from Table =====
 function delete_from_table {
-
     mapfile -t tables < <(ls *.metadata 2>/dev/null | sed 's/\.metadata$//')
 
   # لو مفيش جداول
@@ -378,7 +367,6 @@ function delete_from_table {
 
   zenity --info --text="Record(s) deleted successfully!"
 }
-
 
 function choose_db {
   local BASE_DIR=$(pwd)   
